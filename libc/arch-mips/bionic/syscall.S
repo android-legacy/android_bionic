@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 The Android Open Source Project
+ * Copyright (C) 2013 The Android Open Source Project
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,31 +25,41 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-#ifndef _ERRNO_H
-#define _ERRNO_H
 
-#include <sys/cdefs.h>
-#include <linux/errno.h>
+#include <asm/unistd.h>
+    .text
+    .globl syscall
+    .align 4
+    .ent syscall
 
-__BEGIN_DECLS
-
-/* on Linux, ENOTSUP and EOPNOTSUPP are defined as the same error code
- * even if 1000.3 states that they should be different
+/*
+ * The caller is only required to allocate 16 bytes of stack for a0-a3.
+ * syscall has up to 6 arguments, so we need space for the extra two arguments.
  */
-#ifndef  ENOTSUP
-#define  ENOTSUP  EOPNOTSUPP
-#endif
+#define STACKSIZE 2*4
 
-/* internal function returning the address of the thread-specific errno */
-__attribute__((const))
-extern volatile int*   __errno(void);
-
-/* a macro expanding to the errno l-value */
-#define  errno   (*__errno())
-
-/* bionic's errno has glibc's __errno_location behavior */
-#define __errno_location errno
-
-__END_DECLS
-
-#endif /* _ERRNO_H */
+syscall:
+    .set noreorder
+    .cpload $t9
+    move    $v0, $a0
+    move    $a0, $a1
+    move    $a1, $a2
+    move    $a2, $a3
+    lw      $a3, 16($sp)
+    lw      $t0, 20($sp)
+    lw      $t1, 24($sp)
+    subu    $sp, STACKSIZE
+    sw      $t0, 16($sp)
+    sw      $t1, 20($sp)
+    syscall
+    addu    $sp, STACKSIZE
+    bnez    $a3, 1f
+    move    $a0, $v0
+    j       $ra
+    nop
+1:
+    la      $t9,__set_errno
+    j       $t9
+    nop
+    .set reorder
+    .end syscall
